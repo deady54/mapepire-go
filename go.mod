@@ -1,4 +1,4 @@
-module as400-Websocket
+module github.com/deady54/mapepire-go
 
 go 1.21.0
 
