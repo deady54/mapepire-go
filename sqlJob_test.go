@@ -131,12 +131,12 @@ func TestQuery(t *testing.T) {
 	_, have := initSQLTable("SELECT * FROM TEMPTEST", queryops)
 
 	want := Query{
-		id:    "3",
+		ID:    "3",
 		state: STATE_NOT_YET_RUN,
 	}
 
-	if have.id != want.id {
-		t.Errorf("got %v, want %v", have.id, want.id)
+	if have.ID != want.ID {
+		t.Errorf("got %v, want %v", have.ID, want.ID)
 	}
 	if have.state != want.state {
 		t.Errorf("got %v, want %v", have.state, want.state)
@@ -165,7 +165,7 @@ func TestQueryParams(t *testing.T) {
 	job.Connect(server)
 
 	query, _ := job.Query("DECLARE GLOBAL TEMPORARY TABLE TEMPTEST (ID CHAR(8) NOT NULL, DESCRIPTION VARCHAR(60) NOT NULL, SERIALNO CHAR(12) NOT NULL)")
-	resp := query.RunSQL()
+	resp := query.Execute()
 	if resp.Error != nil {
 		t.Errorf("should not throw error")
 	}
@@ -175,11 +175,11 @@ func TestQueryParams(t *testing.T) {
 			(3, 'consetetur sadipscing elitr', 343434),
 			(4, 'sed diam nonumy', 454545),
 			(5, 'eirmod tempor', 565656)`)
-	insertquery.RunSQL()
+	insertquery.Execute()
 
 	queryops := QueryOptions{
 		Rows:       5,
-		Parameters: []string{"3"},
+		Parameters: [][]string{{"3"}},
 	}
 	_, err := job.QueryWithOptions("SELECT * FROM TEMPTEST WHERE ID = ?", queryops)
 
@@ -194,7 +194,7 @@ func TestQueryMoreParams(t *testing.T) {
 	job.Connect(server)
 
 	query, _ := job.Query("DECLARE GLOBAL TEMPORARY TABLE TEMPTEST (ID CHAR(8) NOT NULL, DESCRIPTION VARCHAR(60) NOT NULL, SERIALNO CHAR(12) NOT NULL)")
-	resp := query.RunSQL()
+	resp := query.Execute()
 	if resp.Error != nil {
 		t.Errorf("should not throw error")
 	}
@@ -204,11 +204,11 @@ func TestQueryMoreParams(t *testing.T) {
 			(3, 'consetetur sadipscing elitr', 343434),
 			(4, 'sed diam nonumy', 454545),
 			(5, 'eirmod tempor', 565656)`)
-	insertquery.RunSQL()
+	insertquery.Execute()
 
 	queryops := QueryOptions{
 		Rows:       5,
-		Parameters: []string{"3", "343434"},
+		Parameters: [][]string{{"3", "343434"}},
 	}
 	_, err := job.QueryWithOptions("SELECT * FROM TEMPTEST WHERE ID = ? AND SERIALNO = ?", queryops)
 

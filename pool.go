@@ -124,7 +124,7 @@ func (jp *JobPool) ExecuteSQLWithOptions(command string, queryops QueryOptions) 
 	resp := make(chan *ServerResponse, 1)
 	go func() {
 		job.Status = JOBSTATUS_BUSY
-		resp <- query.PrepareSQL_Execute()
+		resp <- query.Execute()
 	}()
 
 	err = jp.AddJob(job)

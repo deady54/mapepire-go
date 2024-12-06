@@ -177,6 +177,11 @@ func (s *SQLJob) Query(sql string) (*Query, error) {
 	return s.QueryWithOptions(sql, QueryOptions{})
 }
 
+// Creates a query with the CL command
+func (s *SQLJob) ClCommand(command string) (*Query, error) {
+	return s.QueryWithOptions(command, QueryOptions{IsCLcommand: true})
+}
+
 // Creates a query with the given options
 func (s *SQLJob) QueryWithOptions(command string, options QueryOptions) (*Query, error) {
 
@@ -184,15 +189,18 @@ func (s *SQLJob) QueryWithOptions(command string, options QueryOptions) (*Query,
 		return nil, fmt.Errorf("SQL or CL command required")
 	}
 
-	var jsonParams string
-	for i := 0; i < len(options.Parameters); i++ {
-		if i == len(options.Parameters)-1 {
-			jsonParams += options.Parameters[i]
-			break
+	jsonParams, err := func() (string, error) {
+		if len(options.Parameters) == 1 {
+			param, err := json.Marshal(options.Parameters[0])
+			return string(param), err
+		} else {
+			params, err := json.Marshal(options.Parameters)
+			return string(params), err
 		}
-		jsonParams += options.Parameters[i] + ","
+	}()
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling to JSON: %v", err)
 	}
-	jsonParams = "[" + jsonParams + "]"
 
 	ID := s.getNewUniqueID()
 
@@ -202,7 +210,7 @@ func (s *SQLJob) QueryWithOptions(command string, options QueryOptions) (*Query,
 	}
 
 	query := &Query{
-		id:          ID,
+		ID:          ID,
 		parameters:  jsonParams,
 		rowsToFetch: rows,
 		terse:       options.TerseResult,
@@ -210,7 +218,11 @@ func (s *SQLJob) QueryWithOptions(command string, options QueryOptions) (*Query,
 		state:       STATE_NOT_YET_RUN,
 	}
 
-	if options.CLcommand {
+	if options.Parameters != nil {
+		query.prepared = true
+	}
+
+	if options.IsCLcommand {
 		query.clCommand = command
 	} else {
 		query.sqlQuery = command

@@ -7,15 +7,15 @@ import (
 
 // Represents options for query execution
 type QueryOptions struct {
-	Rows        int      // The amount of rows to fetch
-	Parameters  []string // Parameters, if any
-	TerseResult bool     // Whether the result returns in terse format
-	CLcommand   bool     // Whether the command is a CL command
+	Rows        int        // The amount of rows to fetch
+	Parameters  [][]string // Parameters, if any
+	TerseResult bool       // Whether the result returns in terse format
+	IsCLcommand bool       // Whether the command is a CL command
 }
 
 // Represents a SQL Query that can be executed and managed within a SQL job
 type Query struct {
-	id          string  // The unique identifier
+	ID          string  // The unique identifier
 	clCommand   string  // CL command
 	sqlQuery    string  // SQL query
 	parameters  string  // Parameters, if any
@@ -56,7 +56,7 @@ func (ql *queryList) validateID(ID string) bool {
 	defer ql.lock.Unlock()
 
 	for _, query := range ql.list {
-		if query.id == ID && query.state != STATE_RUN_DONE {
+		if query.ID == ID && query.state != STATE_RUN_DONE {
 			return true
 		}
 	}
@@ -77,113 +77,27 @@ func (ql *queryList) cleanup() {
 	ql.list = newList
 }
 
-// Run CL command
-func (q *Query) RunCL() *ServerResponse {
-	if q.clCommand == "" {
-		q.job.setJobStatus(JOBSTATUS_ERROR)
-		return &ServerResponse{Error: fmt.Errorf("need CL command")}
-	}
-
-	q.job.setJobStatus(JOBSTATUS_BUSY)
-	q.prepared = false
-
-	jsonreq :=
-		fmt.Sprintf(`{"id":"%s","type":"cl","cmd":"%s"}`, q.id, q.clCommand)
-
-	request := &serverRequest{
-		id:      q.id,
-		jsonreq: jsonreq,
-	}
-
-	return q.sendRequest(request)
-}
-
-// Run SQL query
-func (q *Query) RunSQL() *ServerResponse {
-	if q.sqlQuery == "" {
-		q.job.setJobStatus(JOBSTATUS_ERROR)
-		return &ServerResponse{Error: fmt.Errorf("need SQL")}
-	}
-
-	q.job.setJobStatus(JOBSTATUS_BUSY)
-	q.prepared = false
-
-	jsonreq :=
-		fmt.Sprintf(`{"id":"%s","type":"sql","rows":"%s","sql":"%s","terse":%t}`, q.id, q.rowsToFetch, q.sqlQuery, q.terse)
-
-	request := &serverRequest{
-		id:      q.id,
-		jsonreq: jsonreq,
-	}
-
-	return q.sendRequest(request)
-}
-
-// Prepare a SQL query
-func (q *Query) PrepareSQL() error {
-	if q.sqlQuery == "" {
-		q.job.setJobStatus(JOBSTATUS_ERROR)
-		return fmt.Errorf("need SQL")
-	}
-
-	q.job.setJobStatus(JOBSTATUS_BUSY)
-	q.prepared = true
-
-	jsonreq :=
-		fmt.Sprintf(`{"id":"%s","type":"prepare_sql","sql":"%s","terse":%t}`, q.id, q.sqlQuery, q.terse)
-
-	request := &serverRequest{
-		id:      q.id,
-		jsonreq: jsonreq,
-	}
-
-	resp := q.job.send(*request)
-	if resp.Error != nil {
-		return resp.Error
-	}
-
-	q.job.setJobStatus(JOBSTATUS_READY)
-	return nil
-}
-
-// Execute a prepared SQL query with the ID
-func (q *Query) Execute(contID string) *ServerResponse {
-
-	valid := q.job.queryList.validateID(contID)
-	if !valid {
-		q.job.setJobStatus(JOBSTATUS_ERROR)
-		return &ServerResponse{Error: fmt.Errorf("need ID from previous SQL")}
-	}
-
+// Executes the query/command and returns the results
+func (q *Query) Execute() *ServerResponse {
 	q.job.setJobStatus(JOBSTATUS_BUSY)
 
-	jsonreq :=
-		fmt.Sprintf(`{"id":"%s","type":"execute","cont_id":"%s","parameters":%s,"rows":"%s","terse":%t}`, q.id, contID, q.parameters, q.rowsToFetch, q.terse)
-
-	request := &serverRequest{
-		id:      q.id,
-		jsonreq: jsonreq,
-	}
-
-	return q.sendRequest(request)
-}
-
-// Prepare and execute the SQL statement
-func (q *Query) PrepareSQL_Execute() *ServerResponse {
-
-	if q.sqlQuery == "" {
+	if q.state != STATE_NOT_YET_RUN {
 		q.job.setJobStatus(JOBSTATUS_ERROR)
-		return &ServerResponse{Error: fmt.Errorf("need SQL")}
+		return &ServerResponse{Error: fmt.Errorf("statement has already been run")}
 	}
 
-	q.job.setJobStatus(JOBSTATUS_BUSY)
-	q.prepared = true
-
-	jsonreq :=
-		fmt.Sprintf(`{"id":"%s","type":"prepare_sql_execute","sql":"%s","parameters":%s,"rows":"%s","terse":%t}`, q.id, q.sqlQuery, q.parameters, q.rowsToFetch, q.terse)
+	jsonreq := func() string {
+		if q.clCommand != "" {
+			return fmt.Sprintf(`{"id":"%s","type":"cl","cmd":"%s","terse":%t}`, q.ID, q.clCommand, q.terse)
+		}
+		if q.prepared {
+			return fmt.Sprintf(`{"id":"%s","type":"prepare_sql_execute","sql":"%s","parameters":%s,"rows":"%s","terse":%t}`, q.ID, q.sqlQuery, q.parameters, q.rowsToFetch, q.terse)
+		}
+		return fmt.Sprintf(`{"id":"%s","type":"sql","sql":"%s","rows":"%s","terse":%t}`, q.ID, q.sqlQuery, q.rowsToFetch, q.terse)
+	}()
 
 	request := &serverRequest{
-		id:      q.id,
+		id:      q.ID,
 		jsonreq: jsonreq,
 	}
 
@@ -191,7 +105,7 @@ func (q *Query) PrepareSQL_Execute() *ServerResponse {
 }
 
 // Fetch more rows from a previous request with the ID
-func (q *Query) SQLmore(contID string, rows string) *ServerResponse {
+func (q *Query) FetchMore(contID string, rows string) *ServerResponse {
 
 	valid := q.job.queryList.validateID(contID)
 	if !valid {
@@ -204,10 +118,10 @@ func (q *Query) SQLmore(contID string, rows string) *ServerResponse {
 
 	q.job.setJobStatus(JOBSTATUS_BUSY)
 	jsonreq :=
-		fmt.Sprintf(`{"id":"%s","type":"sqlmore","cont_id":"%s","rows":"%s"}`, q.id, contID, rows)
+		fmt.Sprintf(`{"id":"%s","type":"sqlmore","cont_id":"%s","rows":"%s"}`, q.ID, contID, rows)
 
 	request := &serverRequest{
-		id:      q.id,
+		id:      q.ID,
 		jsonreq: jsonreq,
 	}
 
@@ -229,10 +143,10 @@ func (q *Query) SQLClose(contID string) error {
 
 	q.job.setJobStatus(JOBSTATUS_BUSY)
 	jsonreq :=
-		fmt.Sprintf(`{"id":"%v","type":"sqlclose","cont_id":"%v"}`, q.id, contID)
+		fmt.Sprintf(`{"id":"%v","type":"sqlclose","cont_id":"%v"}`, q.ID, contID)
 
 	request := &serverRequest{
-		id:      q.id,
+		id:      q.ID,
 		jsonreq: jsonreq,
 	}
 
