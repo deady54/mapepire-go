@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -123,7 +122,6 @@ func (s *SQLJob) send(req serverRequest) *ServerResponse {
 		return s.setError(response, "Error: %v", fmt.Errorf("need a websocket connection"))
 	}
 
-	log.Println("sending:", req.jsonreq)
 	s.writeMutex.Lock()
 	if err := s.connection.WriteMessage(1, []byte(req.jsonreq)); err != nil {
 		return s.setError(response, writeErr, err)
@@ -328,7 +326,7 @@ func (s *SQLJob) GetTraceData() error {
 
 // Creates a file for the trace data
 func createTraceFile(t traceData) error {
-	if t.Tracedest == "file" {
+	if t.Tracedest == "file" || t.Tracedest == "FILE" {
 		filename := "trace-" + time.Now().Format("2002-01-02") + ".html"
 		file, err := os.Create(filename)
 		if err != nil {
@@ -340,7 +338,7 @@ func createTraceFile(t traceData) error {
 			return fmt.Errorf("error writing to file: %v", err)
 		}
 	}
-	if t.Jtopentracedest == "file" {
+	if t.Jtopentracedest == "file" || t.Jtopentracedest == "FILE" {
 		filename := "jtopentrace-" + time.Now().Format("2002-01-02") + ".txt"
 		file, err := os.Create(filename)
 		if err != nil {
