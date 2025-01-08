@@ -13,7 +13,7 @@ func initSQLTable(command string, queryops2 QueryOptions) (*SQLJob, *Query) {
 		log.Fatal(err)
 	}
 
-	query, _ := job.Query("CREATE TABLE qtemp.TEMPTEST (ID CHAR(8) NOT NULL, DESCRIPTION VARCHAR(60) NOT NULL, SERIALNO CHAR(12) NOT NULL)")
+	query, _ := job.Query("CREATE TABLE qtemp.TEMPTEST (ID decimal(8) NOT NULL, DESCRIPTION VARCHAR(60) NOT NULL, SERIALNO CHAR(12) NOT NULL)")
 	resp := query.Execute()
 	if resp.Error != nil {
 		log.Fatal(resp.Error)
@@ -268,7 +268,7 @@ func TestNewExecuteDelete(t *testing.T) {
 
 func TestNewExecuteSelectParam(t *testing.T) {
 	queryops := QueryOptions{
-		Parameters: [][]string{{"1"}},
+		Parameters: [][]any{{1}},
 	}
 	_, query := initSQLTable("SELECT * FROM TEMPTEST WHERE ID = ?", queryops)
 
@@ -307,7 +307,7 @@ func TestNewExecuteSelectParam(t *testing.T) {
 
 func TestNewExecuteSelectParamInvalid(t *testing.T) {
 	queryops := QueryOptions{
-		Parameters: [][]string{{"1"}, {"2"}},
+		Parameters: [][]any{{1}, {2}},
 	}
 	_, query := initSQLTable("SELECT * FROM TEMPTEST WHERE ID = ?", queryops)
 
@@ -337,7 +337,7 @@ func TestNewExecuteSelectParamInvalid(t *testing.T) {
 // Prepare and Execute SQL with Params
 func TestNewExecuteUpdateParam(t *testing.T) {
 	queryops := QueryOptions{
-		Parameters: [][]string{{"123", "test", "345678", "1"}, {"321", "testtest", "876543", "2"}},
+		Parameters: [][]any{{123, "test", "345678", "1"}, {321, "testtest", "876543", "2"}},
 		Rows:       5,
 	}
 	_, query := initSQLTable("UPDATE TEMPTEST SET ID = ?, DESCRIPTION = ?, SERIALNO = ? WHERE ID = ?", queryops)
@@ -377,7 +377,7 @@ func TestNewExecuteUpdateParam(t *testing.T) {
 
 func TestNewExecuteInsertParam(t *testing.T) {
 	queryops := QueryOptions{
-		Parameters: [][]string{{"123", "test", "345678"}, {"321", "testtest", "876543"}},
+		Parameters: [][]any{{123, "test", "345678"}, {321, "testtest", "876543"}},
 		Rows:       5,
 	}
 	_, query := initSQLTable("INSERT INTO TEMPTEST (ID, DESCRIPTION, SERIALNO) VALUES(?,?,?)", queryops)
@@ -403,7 +403,7 @@ func TestNewExecuteInsertParam(t *testing.T) {
 
 func TestNewExecuteDeleteParam(t *testing.T) {
 	queryops := QueryOptions{
-		Parameters: [][]string{{"1"}, {"2"}},
+		Parameters: [][]any{{1}, {2}},
 	}
 	_, query := initSQLTable("DELETE FROM TEMPTEST WHERE ID = ?", queryops)
 

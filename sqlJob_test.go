@@ -179,7 +179,7 @@ func TestQueryParams(t *testing.T) {
 
 	queryops := QueryOptions{
 		Rows:       5,
-		Parameters: [][]string{{"3"}},
+		Parameters: [][]any{{3}},
 	}
 	_, err := job.QueryWithOptions("SELECT * FROM TEMPTEST WHERE ID = ?", queryops)
 
@@ -208,7 +208,7 @@ func TestQueryMoreParams(t *testing.T) {
 
 	queryops := QueryOptions{
 		Rows:       5,
-		Parameters: [][]string{{"3", "343434"}},
+		Parameters: [][]any{{3, "343434"}},
 	}
 	_, err := job.QueryWithOptions("SELECT * FROM TEMPTEST WHERE ID = ? AND SERIALNO = ?", queryops)
 

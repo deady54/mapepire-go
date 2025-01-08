@@ -7,10 +7,10 @@ import (
 
 // Represents options for query execution
 type QueryOptions struct {
-	Rows        int        // The amount of rows to fetch
-	Parameters  [][]string // Parameters, if any
-	TerseResult bool       // Whether the result returns in terse format
-	IsCLcommand bool       // Whether the command is a CL command
+	Rows        int     // The amount of rows to fetch
+	Parameters  [][]any // Parameters, if any
+	TerseResult bool    // Whether the result returns in terse format
+	IsCLcommand bool    // Whether the command is a CL command
 }
 
 // Represents a SQL Query that can be executed and managed within a SQL job
