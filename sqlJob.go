@@ -213,8 +213,8 @@ func (s *SQLJob) QueryWithOptions(command string, options QueryOptions) (*Query,
 		rowsToFetch: rows,
 		terse:       options.TerseResult,
 		job:         s,
-		state:       STATE_NOT_YET_RUN,
 	}
+	query.state.Store(STATE_NOT_YET_RUN)
 
 	if options.Parameters != nil {
 		query.prepared = true

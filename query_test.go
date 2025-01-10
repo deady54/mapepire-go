@@ -672,6 +672,17 @@ func TestSQLClose(t *testing.T) {
 	}
 }
 
+// SQL Close after query closes automatically
+func TestSQLCloseAutomatic(t *testing.T) {
+	queryops := QueryOptions{}
+	_, query := initSQLTable("SELECT * FROM TEMPTEST", queryops)
+	query.Execute()
+	err := query.SQLClose(query.ID)
+	if err == nil {
+		t.Errorf("should throw error")
+	}
+}
+
 // SQLClose null
 func TestSQLCloseNULL(t *testing.T) {
 	queryops := QueryOptions{

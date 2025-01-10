@@ -131,15 +131,15 @@ func TestQuery(t *testing.T) {
 	_, have := initSQLTable("SELECT * FROM TEMPTEST", queryops)
 
 	want := Query{
-		ID:    "3",
-		state: STATE_NOT_YET_RUN,
+		ID: "3",
 	}
+	want.state.Store(STATE_NOT_YET_RUN)
 
 	if have.ID != want.ID {
 		t.Errorf("got %v, want %v", have.ID, want.ID)
 	}
 	if have.state != want.state {
-		t.Errorf("got %v, want %v", have.state, want.state)
+		t.Errorf("got %v, want %v", have.state.Load(), want.state.Load())
 	}
 }
 

@@ -3,6 +3,7 @@ package mapepire
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 // Represents options for query execution
@@ -15,15 +16,15 @@ type QueryOptions struct {
 
 // Represents a SQL Query that can be executed and managed within a SQL job
 type Query struct {
-	ID          string  // The unique identifier
-	clCommand   string  // CL command
-	sqlQuery    string  // SQL query
-	parameters  string  // Parameters, if any
-	terse       bool    // Whether the result returns in terse format
-	rowsToFetch string  // The amount of rows to fetch
-	prepared    bool    // Whether the query has been prepared
-	job         *SQLJob // Pointer to the SQL Job
-	state       int     // The current state of the query
+	ID          string       // The unique identifier
+	clCommand   string       // CL command
+	sqlQuery    string       // SQL query
+	parameters  string       // Parameters, if any
+	terse       bool         // Whether the result returns in terse format
+	rowsToFetch string       // The amount of rows to fetch
+	prepared    bool         // Whether the query has been prepared
+	job         *SQLJob      // Pointer to the SQL Job
+	state       atomic.Int32 // The current state of the query
 }
 
 // Represents a query list managed by the job
@@ -56,7 +57,7 @@ func (ql *queryList) validateID(ID string) bool {
 	defer ql.lock.Unlock()
 
 	for _, query := range ql.list {
-		if query.ID == ID && query.state != STATE_RUN_DONE {
+		if query.ID == ID && query.state.Load() != STATE_RUN_DONE {
 			return true
 		}
 	}
@@ -70,8 +71,10 @@ func (ql *queryList) cleanup() {
 
 	newList := make([]*Query, 0, len(ql.list))
 	for _, query := range ql.list {
-		if query.state != STATE_RUN_DONE {
+		if query.state.Load() != STATE_RUN_DONE {
 			newList = append(newList, query)
+		} else {
+			query.sqlCloseUnsafe(query.ID)
 		}
 	}
 	ql.list = newList
@@ -81,7 +84,7 @@ func (ql *queryList) cleanup() {
 func (q *Query) Execute() *ServerResponse {
 	q.job.setJobStatus(JOBSTATUS_BUSY)
 
-	if q.state != STATE_NOT_YET_RUN {
+	if q.state.Load() != STATE_NOT_YET_RUN {
 		q.job.setJobStatus(JOBSTATUS_ERROR)
 		return &ServerResponse{Error: fmt.Errorf("statement has already been run")}
 	}
@@ -111,7 +114,7 @@ func (q *Query) FetchMore(contID string, rows string) *ServerResponse {
 	if !valid {
 		q.job.setJobStatus(JOBSTATUS_ERROR)
 		return &ServerResponse{Error: fmt.Errorf("need ID from previous SQL")}
-	} else if q.state == STATE_NOT_YET_RUN {
+	} else if q.state.Load() == STATE_NOT_YET_RUN {
 		q.job.setJobStatus(JOBSTATUS_ERROR)
 		return &ServerResponse{Error: fmt.Errorf("statement has not yet been run")}
 	}
@@ -132,15 +135,21 @@ func (q *Query) FetchMore(contID string, rows string) *ServerResponse {
 	return response
 }
 
-// Close cursor from a previous request
+// Close cursor from a previous request.
+// Select querys are automatically closed after fetching all data.
 func (q *Query) SQLClose(contID string) error {
 
 	valid := q.job.queryList.validateID(contID)
 	if !valid {
 		q.job.setJobStatus(JOBSTATUS_ERROR)
-		return fmt.Errorf("need ID from previous SQL")
+		return fmt.Errorf("need ID from previous query")
 	}
 
+	return q.sqlCloseUnsafe(contID)
+}
+
+// Close cursor from a previous request without validating existence of contID
+func (q *Query) sqlCloseUnsafe(contID string) error {
 	q.job.setJobStatus(JOBSTATUS_BUSY)
 	jsonreq :=
 		fmt.Sprintf(`{"id":"%v","type":"sqlclose","cont_id":"%v"}`, q.ID, contID)
@@ -166,9 +175,9 @@ func (q *Query) sendRequest(request *serverRequest) *ServerResponse {
 	}
 
 	if resp.IsDone && resp.Success {
-		q.state = STATE_RUN_DONE
+		q.state.Store(STATE_RUN_DONE)
 	} else if resp.Success && !resp.IsDone {
-		q.state = STATE_RUN_MORE_DATA
+		q.state.Store(STATE_RUN_MORE_DATA)
 	}
 	q.job.queryList.cleanup()
 
