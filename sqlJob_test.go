@@ -1,6 +1,7 @@
 package mapepire
 
 import (
+	"log"
 	"os"
 	"testing"
 
@@ -165,7 +166,7 @@ func TestQueryParams(t *testing.T) {
 	job.Connect(server)
 
 	query, _ := job.Query("DECLARE GLOBAL TEMPORARY TABLE TEMPTEST (ID CHAR(8) NOT NULL, DESCRIPTION VARCHAR(60) NOT NULL, SERIALNO CHAR(12) NOT NULL)")
-	resp := query.Execute()
+	resp, _ := query.Execute()
 	if resp.Error != nil {
 		t.Errorf("should not throw error")
 	}
@@ -194,7 +195,7 @@ func TestQueryMoreParams(t *testing.T) {
 	job.Connect(server)
 
 	query, _ := job.Query("DECLARE GLOBAL TEMPORARY TABLE TEMPTEST (ID CHAR(8) NOT NULL, DESCRIPTION VARCHAR(60) NOT NULL, SERIALNO CHAR(12) NOT NULL)")
-	resp := query.Execute()
+	resp, _ := query.Execute()
 	if resp.Error != nil {
 		t.Errorf("should not throw error")
 	}
@@ -228,6 +229,7 @@ func TestSetTraceConfig1(t *testing.T) {
 	}
 
 	err := job.SetTraceConfig(traceops)
+	log.Println(err)
 	if err != nil {
 		t.Errorf("should not throw error")
 	}
@@ -386,7 +388,7 @@ func TestCloseInvalid(t *testing.T) {
 	}
 }
 
-// Get version
+// Get version (v2.1.6)
 func TestGetVersion(t *testing.T) {
 	job := NewSQLJob("test")
 	job.Connect(server)

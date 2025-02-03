@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -49,9 +50,8 @@ const (
 	JOBSTATUS_NOT_STARTED = "NOT_STARTED"
 )
 const (
-	writeErr = "error writing message: %v"
-	readErr  = "error reading message: %v"
-	jsonErr  = "error unmarshalling json: %v"
+	DEFAULT_FETCH_SIZE = 100
+	MAX_FETCH_SIZE     = 1000
 )
 
 // Receive a new SQL job with the given ID
@@ -80,7 +80,7 @@ func (s *SQLJob) Connect(server DaemonServer) error {
 
 	conn, _, err := dialer.Dial(url, header)
 	if err != nil {
-		return fmt.Errorf("error connecting to websocket: %v", err)
+		return &WebsocketError{Method: "Connect()", Message: err.Error()}
 	}
 	s.connection = conn
 
@@ -98,9 +98,9 @@ func (s *SQLJob) Connect(server DaemonServer) error {
 		jsonreq: jsonreq,
 	}
 
-	response := s.send(request)
-	if response.Error != nil {
-		return response.Error
+	response, err := s.send(request)
+	if err != nil {
+		return err
 	}
 
 	s.Jobname, response.Error = s.getDBJob()
@@ -112,30 +112,32 @@ func (s *SQLJob) Connect(server DaemonServer) error {
 }
 
 // sends requests to the server
-func (s *SQLJob) send(req serverRequest) *ServerResponse {
+func (s *SQLJob) send(req serverRequest) (*ServerResponse, error) {
 
 	response := &ServerResponse{
 		ID: req.id,
 	}
 
 	if s.connection == nil {
-		return s.setError(response, "Error: %v", fmt.Errorf("need a websocket connection"))
+		return response, &WebsocketError{Method: "send()", Message: "need a connection"}
 	}
 
 	s.writeMutex.Lock()
 	if err := s.connection.WriteMessage(1, []byte(req.jsonreq)); err != nil {
-		return s.setError(response, writeErr, err)
+		msg := "WriteMessage(): " + err.Error()
+		return response, &WebsocketError{Method: "send()", Message: msg}
 	}
 
 	_, resp, err := s.connection.ReadMessage()
 	if err != nil {
-		return s.setError(response, readErr, err)
+		msg := "ReadMessage(): " + err.Error()
+		return response, &WebsocketError{Method: "send()", Message: msg}
 	}
 	s.writeMutex.Unlock()
 
 	response.SqlRC, response.SqlState, response.Error = checkJsonErr(resp)
 	if response.Error != nil {
-		return response
+		return response, response.Error
 	}
 
 	// Only works if data is received in terse format
@@ -144,14 +146,16 @@ func (s *SQLJob) send(req serverRequest) *ServerResponse {
 	}
 
 	if err := json.Unmarshal(resp, response); err != nil {
-		return s.setError(response, jsonErr, err)
+		unmarshalErr := fmt.Errorf("unmarshal error in send() method: ")
+		err = errors.Join(unmarshalErr, err)
+		return response, err
 	}
 
 	if s.Jobname != "" {
 		response.Job = s.Jobname
 	}
 
-	return response
+	return response, nil
 }
 
 // checks JSON for errors
@@ -164,7 +168,8 @@ func checkJsonErr(jsonres []byte) (int, string, error) {
 
 	json.Unmarshal(jsonres, &checkError)
 	if checkError.Error != "" || checkError.SqlState != "" {
-		return checkError.SqlRC, checkError.SqlState, fmt.Errorf(checkError.Error)
+		msg := "json.Unmarshal(): " + checkError.Error
+		return checkError.SqlRC, checkError.SqlState, &ServerError{Method: "checkJsonErr()", Message: msg}
 	}
 
 	return 0, "", nil
@@ -172,7 +177,7 @@ func checkJsonErr(jsonres []byte) (int, string, error) {
 
 // Creates a query with the SQL
 func (s *SQLJob) Query(sql string) (*Query, error) {
-	return s.QueryWithOptions(sql, QueryOptions{})
+	return s.QueryWithOptions(sql, QueryOptions{Rows: DEFAULT_FETCH_SIZE})
 }
 
 // Creates a query with the CL command
@@ -205,6 +210,9 @@ func (s *SQLJob) QueryWithOptions(command string, options QueryOptions) (*Query,
 	var rows string
 	if options.Rows > 0 {
 		rows = fmt.Sprint(options.Rows)
+	}
+	if options.Rows > MAX_FETCH_SIZE {
+		rows = fmt.Sprint(MAX_FETCH_SIZE)
 	}
 
 	query := &Query{
@@ -240,6 +248,10 @@ func (s *SQLJob) SetTraceConfig(ops TraceOptions) error {
 	var jtFields = ops.Jtopentracelevel != "" && ops.Jtopentracedest != ""
 	var traceFields = ops.Tracelevel != "" && ops.Tracedest != ""
 
+	if s.connection == nil {
+		return &WebsocketError{Method: "SetTraceConfig()", Message: "need a connection"}
+	}
+
 	if allFields {
 		jsonreq =
 			fmt.Sprintf(`{"id":"%s","type":"setconfig","jtopentracelevel":"%s","jtopentracedest":"%s","tracelevel":"%s","tracedest":"%s"}`, s.ID, ops.Jtopentracelevel, ops.Jtopentracedest, ops.Tracelevel, ops.Tracedest)
@@ -258,12 +270,14 @@ func (s *SQLJob) SetTraceConfig(ops TraceOptions) error {
 	s.writeMutex.Lock()
 	err := s.connection.WriteMessage(1, []byte(jsonreq))
 	if err != nil {
-		return fmt.Errorf(writeErr, err)
+		msg := "WriteMessage(): " + err.Error()
+		return &WebsocketError{Method: "SetTraceConfig()", Message: msg}
 	}
 
 	_, resp, err := s.connection.ReadMessage()
 	if err != nil {
-		return fmt.Errorf(readErr, err)
+		msg := "ReadMessage(): " + err.Error()
+		return &WebsocketError{Method: "SetTraceConfig()", Message: msg}
 	}
 	_, _, err = checkJsonErr(resp)
 	if err != nil {
@@ -274,7 +288,9 @@ func (s *SQLJob) SetTraceConfig(ops TraceOptions) error {
 	trace := &TraceOptions{}
 	err = json.Unmarshal(resp, trace)
 	if err != nil {
-		return fmt.Errorf(jsonErr, err)
+		unmarshalErr := fmt.Errorf("unmarshal error in SetTraceConfig() method: ")
+		err = errors.Join(unmarshalErr, err)
+		return err
 	}
 
 	ops.tracing = true
@@ -288,17 +304,23 @@ func (s *SQLJob) GetTraceData() error {
 		return fmt.Errorf("need to set the trace config")
 	}
 
+	if s.connection == nil {
+		return &WebsocketError{Method: "GetTraceData()", Message: "need a connection"}
+	}
+
 	jsonreq := fmt.Sprintf(`{"id":"%v","type":"gettracedata"}`, s.ID)
 
 	s.writeMutex.Lock()
 	err := s.connection.WriteMessage(1, []byte(jsonreq))
 	if err != nil {
-		return fmt.Errorf(writeErr, err)
+		msg := "WriteMessage(): " + err.Error()
+		return &WebsocketError{Method: "GetTraceData()", Message: msg}
 	}
 
 	_, resp, err := s.connection.ReadMessage()
 	if err != nil {
-		return fmt.Errorf(readErr, err)
+		msg := "ReadMessage(): " + err.Error()
+		return &WebsocketError{Method: "GetTraceData()", Message: msg}
 	}
 	s.writeMutex.Unlock()
 
@@ -313,7 +335,9 @@ func (s *SQLJob) GetTraceData() error {
 
 	err = json.Unmarshal(resp, &data)
 	if err != nil {
-		return fmt.Errorf(jsonErr, err)
+		unmarshalErr := fmt.Errorf("unmarshal error in GetTraceData() method: ")
+		err = errors.Join(unmarshalErr, err)
+		return err
 	}
 
 	err = createTraceFile(data)
@@ -357,7 +381,7 @@ func createTraceFile(t traceData) error {
 // Closes the SQL job and websocket connection.
 func (s *SQLJob) Close() error {
 	if s.connection == nil {
-		return fmt.Errorf("no connection found")
+		return &WebsocketError{Method: "Close()", Message: "need a connection"}
 	}
 
 	s.setJobStatus(JOBSTATUS_ENDED)
@@ -366,7 +390,8 @@ func (s *SQLJob) Close() error {
 
 	err := s.connection.WriteMessage(1, []byte(`{"id":"bye","type":"exit"}`))
 	if err != nil {
-		return fmt.Errorf(writeErr, err)
+		msg := "WriteMessage(): " + err.Error()
+		return &WebsocketError{Method: "Close()", Message: msg}
 	}
 	err = s.connection.Close()
 	if err != nil {
@@ -387,26 +412,30 @@ func (s *SQLJob) GetStatus() string {
 // Receive the current version info
 func (s *SQLJob) GetVersion() (string, error) {
 	if s.connection == nil {
-		return "", fmt.Errorf("no connection found")
+		return "", &WebsocketError{Method: "GetVersion()", Message: "need a connection"}
 	}
 	jsonreq := `{"id":"versionCheck","type":"getversion"}`
 
 	s.writeMutex.Lock()
 	err := s.connection.WriteMessage(1, []byte(jsonreq))
 	if err != nil {
-		return "", fmt.Errorf(writeErr, err)
+		msg := "WriteMessage(): " + err.Error()
+		return "", &WebsocketError{Method: "GetVersion()", Message: msg}
 	}
 
 	_, resp, err := s.connection.ReadMessage()
 	if err != nil {
-		return "", fmt.Errorf(readErr, err)
+		msg := "ReadMessage(): " + err.Error()
+		return "", &WebsocketError{Method: "GetVersion()", Message: msg}
 	}
 	s.writeMutex.Unlock()
 
 	var response struct{ Version string }
 	err = json.Unmarshal(resp, &response)
 	if err != nil {
-		return "", fmt.Errorf(jsonErr, err)
+		unmarshalErr := fmt.Errorf("unmarshal error in send() method: ")
+		err = errors.Join(unmarshalErr, err)
+		return "", err
 	}
 
 	return response.Version, nil
@@ -425,9 +454,9 @@ func (s *SQLJob) getDBJob() (string, error) {
 		jsonreq: jsonreq,
 	}
 
-	resp := s.send(*request)
-	if resp.Error != nil {
-		return "", resp.Error
+	resp, err := s.send(*request)
+	if err != nil {
+		return "", err
 	}
 	s.Jobname = resp.Job
 
@@ -439,13 +468,6 @@ func (s *SQLJob) getNewUniqueID() string {
 	count := s.counter.Add(1)
 	ID := strconv.Itoa(int(count))
 	return ID
-}
-
-// Set errors
-func (s *SQLJob) setError(resp *ServerResponse, info string, err error) *ServerResponse {
-	s.setJobStatus(JOBSTATUS_ERROR)
-	resp.Error = fmt.Errorf(info, err)
-	return resp
 }
 
 // Set the current job status

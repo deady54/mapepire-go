@@ -5,27 +5,43 @@ import (
 	"testing"
 )
 
+func initPoolSQLTable(pool *JobPool) error {
+	_, err := pool.ExecuteSQL("CREATE TABLE qtemp.TEMPTEST (ID decimal(8) NOT NULL, DESCRIPTION VARCHAR(60) NOT NULL, SERIALNO CHAR(12) NOT NULL)")
+	if err != nil {
+		return err
+	}
+	_, err = pool.ExecuteSQL(`INSERT INTO TEMPTEST VALUES (1, 'Lorem ipsum', 121212),
+	(2, 'dolor sit amet', 232323),
+	(3, 'consetetur sadipscing elitr', 343434),
+	(4, 'sed diam nonumy', 454545),
+	(5, 'eirmod tempor', 565656)`)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func TestNewPool(t *testing.T) {
-	_, err := NewPool(PoolOptions{Creds: &server, MaxSize: 5, StartingSize: 2})
+	_, err := NewPool(PoolOptions{Creds: server, MaxSize: 5, StartingSize: 2})
 	if err != nil {
 		t.Errorf("should not throw error")
 	}
-	_, err = NewPool(PoolOptions{Creds: &server, MaxSize: 0, StartingSize: 3})
+	_, err = NewPool(PoolOptions{Creds: server, MaxSize: 0, StartingSize: 3})
 	if err == nil {
 		t.Errorf("should throw error")
 	}
-	_, err = NewPool(PoolOptions{Creds: &server, MaxSize: 5, StartingSize: 0})
+	_, err = NewPool(PoolOptions{Creds: server, MaxSize: 5, StartingSize: 0})
 	if err == nil {
 		t.Errorf("should throw error")
 	}
-	_, err = NewPool(PoolOptions{Creds: &server, MaxSize: 3, StartingSize: 5})
+	_, err = NewPool(PoolOptions{Creds: server, MaxSize: 3, StartingSize: 5})
 	if err == nil {
 		t.Errorf("should throw error")
 	}
 }
 
 func TestNewPoolJob(t *testing.T) {
-	pool, err := NewPool(PoolOptions{Creds: &server, StartingSize: 1, MaxSize: 2, MaxWaitTime: 1})
+	pool, err := NewPool(PoolOptions{Creds: server, StartingSize: 1, MaxSize: 2, MaxWaitTime: 1})
 	if err != nil {
 		t.Errorf("should not throw error")
 	}
@@ -41,14 +57,18 @@ func TestNewPoolJob(t *testing.T) {
 }
 
 func TestExecuteSQL(t *testing.T) {
-	pool, err := NewPool(PoolOptions{Creds: &server, MaxWaitTime: 3, MaxSize: 5, StartingSize: 1})
+	pool, err := NewPool(PoolOptions{Creds: server, MaxWaitTime: 3, MaxSize: 1, StartingSize: 1})
 	if err != nil {
 		t.Errorf("should not throw error")
 	}
-	respChan, err := pool.ExecuteSQLWithOptions("SELECT * FROM DIPA5", QueryOptions{Rows: 5})
+	err = initPoolSQLTable(pool)
 	if err != nil {
 		t.Errorf("should not throw error")
 	}
-	log.Println(<-respChan)
+	resp, err := pool.ExecuteSQLWithOptions("SELECT * FROM TEMPTEST", QueryOptions{Rows: 5})
+	if err != nil {
+		t.Errorf("should not throw error")
+	}
+	log.Println(resp)
 	pool.Close()
 }

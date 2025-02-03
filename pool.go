@@ -1,6 +1,7 @@
 package mapepire
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -17,10 +18,10 @@ type JobPool struct {
 
 // Represents the options for configuring a connection pool
 type PoolOptions struct {
-	Creds        *DaemonServer // Credentials to connect to the server
-	MaxWaitTime  int           // Max time to wait for a job (in seconds)
-	MaxSize      int           // Pool max size
-	StartingSize int           // Pool starting count
+	Creds        DaemonServer // Credentials to connect to the server
+	MaxWaitTime  int          // Max time to wait for a job (in seconds)
+	MaxSize      int          // Pool max size
+	StartingSize int          // Pool starting count
 }
 
 // Create a new pool object
@@ -64,7 +65,7 @@ func (jp *JobPool) GetJob() (s *SQLJob, err error) {
 	select {
 	case s := <-jp.jobPool:
 		if s.connection == nil {
-			err := s.Connect(*jp.options.Creds)
+			err := s.Connect(jp.options.Creds)
 			if err != nil {
 				return nil, err
 			}
@@ -84,7 +85,7 @@ func (jp *JobPool) newPoolJob() (*SQLJob, error) {
 	id := "PoolJob " + jobCount
 	job := NewSQLJob(id)
 
-	err := job.Connect(*jp.options.Creds)
+	err := job.Connect(jp.options.Creds)
 	if err != nil {
 		return nil, err
 	}
@@ -104,12 +105,12 @@ func (jp *JobPool) AddJob(s *SQLJob) error {
 }
 
 // Execute a SQL query with a job from the pool
-func (jp *JobPool) ExecuteSQL(sql string) (<-chan *ServerResponse, error) {
+func (jp *JobPool) ExecuteSQL(sql string) (*ServerResponse, error) {
 	return jp.ExecuteSQLWithOptions(sql, QueryOptions{})
 }
 
 // Execute a SQL query with options, using a job from the pool
-func (jp *JobPool) ExecuteSQLWithOptions(command string, queryops QueryOptions) (<-chan *ServerResponse, error) {
+func (jp *JobPool) ExecuteSQLWithOptions(command string, queryops QueryOptions) (*ServerResponse, error) {
 
 	job, err := jp.GetJob()
 	if err != nil {
@@ -121,15 +122,12 @@ func (jp *JobPool) ExecuteSQLWithOptions(command string, queryops QueryOptions) 
 		return nil, err
 	}
 
-	resp := make(chan *ServerResponse, 1)
-	go func() {
-		job.Status = JOBSTATUS_BUSY
-		resp <- query.Execute()
-	}()
+	resp, executeErr := query.Execute()
 
 	err = jp.AddJob(job)
+	err = errors.Join(executeErr, err)
 	if err != nil {
-		return nil, err
+		return resp, err
 	}
 
 	return resp, nil

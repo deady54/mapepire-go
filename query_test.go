@@ -14,7 +14,7 @@ func initSQLTable(command string, queryops2 QueryOptions) (*SQLJob, *Query) {
 	}
 
 	query, _ := job.Query("CREATE TABLE qtemp.TEMPTEST (ID decimal(8) NOT NULL, DESCRIPTION VARCHAR(60) NOT NULL, SERIALNO CHAR(12) NOT NULL)")
-	resp := query.Execute()
+	resp, _ := query.Execute()
 	if resp.Error != nil {
 		log.Fatal(resp.Error)
 	}
@@ -24,7 +24,7 @@ func initSQLTable(command string, queryops2 QueryOptions) (*SQLJob, *Query) {
 	(3, 'consetetur sadipscing elitr', 343434),
 	(4, 'sed diam nonumy', 454545),
 	(5, 'eirmod tempor', 565656)`)
-	resp2 := insertquery.Execute()
+	resp2, _ := insertquery.Execute()
 	log.Println(resp2)
 
 	query2, err := job.QueryWithOptions(command, queryops2)
@@ -40,7 +40,7 @@ func TestNewExecute(t *testing.T) {
 		Rows: 5,
 	}
 	_, query := initSQLTable("SELECT * FROM TEMPTEST", queryops)
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:         "3",
@@ -80,7 +80,7 @@ func TestNewExecuteTerse(t *testing.T) {
 		TerseResult: true,
 	}
 	_, query := initSQLTable("SELECT * FROM TEMPTEST", queryops)
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:         "3",
@@ -122,7 +122,7 @@ func TestNewExecuteInvalid(t *testing.T) {
 		Rows: 5,
 	}
 	_, query := initSQLTable("SELECT * FROM INVALIDTABLE", queryops)
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:         "3",
@@ -160,13 +160,13 @@ func TestNewExecuteInsert(t *testing.T) {
 	job.Connect(server)
 
 	query, _ := job.Query("DECLARE GLOBAL TEMPORARY TABLE TEMPTEST (ID CHAR(8) NOT NULL, DESCRIPTION VARCHAR(60) NOT NULL, SERIALNO CHAR(12) NOT NULL)")
-	resp := query.Execute()
+	resp, _ := query.Execute()
 	if resp.Error != nil {
 		log.Fatal(resp.Error)
 	}
 
 	insertquery, _ := job.Query("INSERT INTO TEMPTEST VALUES (1, 'testtest', 121212)")
-	have := insertquery.Execute()
+	have, _ := insertquery.Execute()
 
 	want := ServerResponse{
 		ID:          "2",
@@ -197,13 +197,13 @@ func TestNewExecuteUpdate(t *testing.T) {
 	queryops := QueryOptions{}
 
 	job, query := initSQLTable("UPDATE TEMPTEST SET ID = 5, DESCRIPTION = 'test', SERIALNO = 545454 WHERE ID = 1", queryops)
-	update := query.Execute()
+	update, _ := query.Execute()
 	if update.Error != nil {
 		t.Errorf("should not throw error")
 	}
 
 	query2, _ := job.Query("SELECT * FROM TEMPTEST WHERE ID = 5")
-	have := query2.Execute()
+	have, _ := query2.Execute()
 	want := ServerResponse{
 		ID:          "4",
 		Success:     true,
@@ -243,7 +243,7 @@ func TestNewExecuteDelete(t *testing.T) {
 	queryops := QueryOptions{}
 
 	_, query := initSQLTable("DELETE FROM TEMPTEST WHERE ID = 1", queryops)
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := ServerResponse{
 		ID:          "3",
@@ -272,7 +272,7 @@ func TestNewExecuteSelectParam(t *testing.T) {
 	}
 	_, query := initSQLTable("SELECT * FROM TEMPTEST WHERE ID = ?", queryops)
 
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:         "3",
@@ -305,13 +305,14 @@ func TestNewExecuteSelectParam(t *testing.T) {
 	}
 }
 
+// (v2.1.6)
 func TestNewExecuteSelectParamInvalid(t *testing.T) {
 	queryops := QueryOptions{
 		Parameters: [][]any{{1}, {2}},
 	}
 	_, query := initSQLTable("SELECT * FROM TEMPTEST WHERE ID = ?", queryops)
 
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:       "3",
@@ -342,7 +343,7 @@ func TestNewExecuteUpdateParam(t *testing.T) {
 	}
 	_, query := initSQLTable("UPDATE TEMPTEST SET ID = ?, DESCRIPTION = ?, SERIALNO = ? WHERE ID = ?", queryops)
 
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:             "3",
@@ -382,7 +383,7 @@ func TestNewExecuteInsertParam(t *testing.T) {
 	}
 	_, query := initSQLTable("INSERT INTO TEMPTEST (ID, DESCRIPTION, SERIALNO) VALUES(?,?,?)", queryops)
 
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:      "3",
@@ -407,7 +408,7 @@ func TestNewExecuteDeleteParam(t *testing.T) {
 	}
 	_, query := initSQLTable("DELETE FROM TEMPTEST WHERE ID = ?", queryops)
 
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:          "3",
@@ -445,7 +446,7 @@ func TestNewExecuteCL(t *testing.T) {
 		t.Errorf("should not throw error")
 	}
 
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:      "1",
@@ -468,7 +469,7 @@ func TestNewExecuteCL(t *testing.T) {
 	}
 }
 
-// Execute CL command invalid
+// Execute CL command invalid (v2.1.6)
 func TestNewExecuteCLinvalid(t *testing.T) {
 	queryops := QueryOptions{
 		IsCLcommand: true,
@@ -481,7 +482,7 @@ func TestNewExecuteCLinvalid(t *testing.T) {
 		t.Errorf("should not throw error")
 	}
 
-	have := query.Execute()
+	have, _ := query.Execute()
 
 	want := &ServerResponse{
 		ID:       "1",
@@ -512,7 +513,7 @@ func TestFetchMore(t *testing.T) {
 	_, query := initSQLTable("SELECT * FROM TEMPTEST", queryops)
 
 	query.Execute()
-	have := query.FetchMore(query.ID, "5")
+	have, _ := query.FetchMore(query.ID, "5")
 
 	want := &ServerResponse{
 		ID:         "3",
@@ -551,7 +552,7 @@ func TestFetchMoreTerse(t *testing.T) {
 	_, query := initSQLTable("SELECT * FROM TEMPTEST", queryops)
 
 	query.Execute()
-	have := query.FetchMore(query.ID, "1")
+	have, _ := query.FetchMore(query.ID, "1")
 
 	want := &ServerResponse{
 		ID:         "3",
@@ -591,7 +592,7 @@ func TestFetchMoreinvalid(t *testing.T) {
 
 	_, query := initSQLTable("SELECT * FROM TEMPTEST", queryops)
 	query.Execute()
-	have := query.FetchMore("invalid", "1")
+	have, err := query.FetchMore("invalid", "1")
 
 	want := &ServerResponse{
 		Success:    false,
@@ -601,7 +602,7 @@ func TestFetchMoreinvalid(t *testing.T) {
 	if have.Success != want.Success {
 		t.Errorf("got %t, want %t", have.Success, want.Success)
 	}
-	if have.Error == nil {
+	if err == nil {
 		t.Errorf("should throw error")
 	}
 	if have.HasResults != want.HasResults {
@@ -617,7 +618,7 @@ func TestFetchMoreInvalid2(t *testing.T) {
 
 	_, query := initSQLTable("SELECT * FROM TEMPTEST", queryops)
 	query.Execute()
-	have := query.FetchMore("", "1")
+	have, err := query.FetchMore("", "1")
 
 	want := &ServerResponse{
 		Success:    false,
@@ -627,7 +628,7 @@ func TestFetchMoreInvalid2(t *testing.T) {
 	if have.Success != want.Success {
 		t.Errorf("got %t, want %t", have.Success, want.Success)
 	}
-	if have.Error == nil {
+	if err == nil {
 		t.Errorf("should throw error")
 	}
 	if have.HasResults != want.HasResults {
@@ -641,7 +642,7 @@ func TestFetchMoreinvalid3(t *testing.T) {
 	}
 
 	_, query := initSQLTable("SELECT * FROM TEMPTEST", queryops)
-	have := query.FetchMore("5", "1")
+	have, err := query.FetchMore("5", "1")
 
 	want := &ServerResponse{
 		Success:    false,
@@ -651,7 +652,7 @@ func TestFetchMoreinvalid3(t *testing.T) {
 	if have.Success != want.Success {
 		t.Errorf("got %t, want %t", have.Success, want.Success)
 	}
-	if have.Error == nil {
+	if err == nil {
 		t.Errorf("should throw error")
 	}
 	if have.HasResults != want.HasResults {

@@ -81,12 +81,13 @@ func (ql *queryList) cleanup() {
 }
 
 // Executes the query/command and returns the results
-func (q *Query) Execute() *ServerResponse {
+func (q *Query) Execute() (*ServerResponse, error) {
 	q.job.setJobStatus(JOBSTATUS_BUSY)
 
 	if q.state.Load() != STATE_NOT_YET_RUN {
 		q.job.setJobStatus(JOBSTATUS_ERROR)
-		return &ServerResponse{Error: fmt.Errorf("statement has already been run")}
+		err := fmt.Errorf("statement has already been run")
+		return &ServerResponse{ID: q.ID}, err
 	}
 
 	jsonreq := func() string {
@@ -108,18 +109,24 @@ func (q *Query) Execute() *ServerResponse {
 }
 
 // Fetch more rows from a previous request with the ID
-func (q *Query) FetchMore(contID string, rows string) *ServerResponse {
+func (q *Query) FetchMore(contID string, rows string) (*ServerResponse, error) {
+	q.job.setJobStatus(JOBSTATUS_BUSY)
+
+	resp := &ServerResponse{
+		ID: q.ID,
+	}
 
 	valid := q.job.queryList.validateID(contID)
 	if !valid {
 		q.job.setJobStatus(JOBSTATUS_ERROR)
-		return &ServerResponse{Error: fmt.Errorf("need ID from previous SQL")}
+		err := fmt.Errorf("need ID from previous SQL")
+		return resp, err
 	} else if q.state.Load() == STATE_NOT_YET_RUN {
 		q.job.setJobStatus(JOBSTATUS_ERROR)
-		return &ServerResponse{Error: fmt.Errorf("statement has not yet been run")}
+		err := fmt.Errorf("statement has not yet been run")
+		return resp, err
 	}
 
-	q.job.setJobStatus(JOBSTATUS_BUSY)
 	jsonreq :=
 		fmt.Sprintf(`{"id":"%s","type":"sqlmore","cont_id":"%s","rows":"%s"}`, q.ID, contID, rows)
 
@@ -128,11 +135,15 @@ func (q *Query) FetchMore(contID string, rows string) *ServerResponse {
 		jsonreq: jsonreq,
 	}
 
-	response := q.sendRequest(request)
+	response, err := q.sendRequest(request)
+	if err != nil {
+		return resp, err
+	}
+
 	if response.Success {
 		response.HasResults = true
 	}
-	return response
+	return response, nil
 }
 
 // Close cursor from a previous request.
@@ -159,19 +170,21 @@ func (q *Query) sqlCloseUnsafe(contID string) error {
 		jsonreq: jsonreq,
 	}
 
-	resp := q.job.send(*request)
-	if resp.Error != nil {
-		return resp.Error
+	_, err := q.job.send(*request)
+	if err != nil {
+		q.job.setJobStatus(JOBSTATUS_ERROR)
+		return err
 	}
 
 	return nil
 }
 
 // sends the request and sets the query state
-func (q *Query) sendRequest(request *serverRequest) *ServerResponse {
-	resp := q.job.send(*request)
-	if resp.Error != nil {
-		return resp
+func (q *Query) sendRequest(request *serverRequest) (*ServerResponse, error) {
+	resp, err := q.job.send(*request)
+	if err != nil {
+		q.job.setJobStatus(JOBSTATUS_ERROR)
+		return resp, err
 	}
 
 	if resp.IsDone && resp.Success {
@@ -182,5 +195,5 @@ func (q *Query) sendRequest(request *serverRequest) *ServerResponse {
 	q.job.queryList.cleanup()
 
 	q.job.setJobStatus(JOBSTATUS_READY)
-	return resp
+	return resp, nil
 }
