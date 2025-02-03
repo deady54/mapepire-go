@@ -37,7 +37,7 @@ func main() {
 
 	// Initialize and execute query
 	query, _ := job.Query("SELECT * FROM employee")
-	result := query.Execute()
+	result, _ := query.Execute()
 
 	// Access data and information
 	log.Println(result.Success)
@@ -60,7 +60,7 @@ In the `QueryOptions` object are some additional options for the query execution
 ```go
 options := mapepire.QueryOptions{
 		Rows:        5,
-		Parameters:  [][]string{},
+		Parameters:  [][]any{},
 		TerseResult: false,
 		IsCLcommand: false,
 	}
@@ -70,21 +70,21 @@ query, _ := job.QueryWithOptions("SELECT * FROM employee", options)
 ### Prepared Statements
 Statements can be easily prepared and executed with parameters:
 ```go
-options := mapepire.QueryOptions{Parameters: [][]string{{"Max", "Olly"}}}
+options := mapepire.QueryOptions{Parameters: [][]any{{"Max", "Olly"}}}
 query, _ := job.QueryWithOptions("SELECT * FROM employee WHERE (name = ? OR name = ?)", options)
-result := query.Execute()
+result, _ := query.Execute()
 ```
 There can also be added more to the batch:
 ```go
-options := mapepire.QueryOptions{Parameters: [][]string{{"1264", "Mark"}, {"1265", "Tom"}}}
+options := mapepire.QueryOptions{Parameters: [][]any{{"1264", "Mark"}, {"1265", "Tom"}}}
 query, _ := job.QueryWithOptions("INSERT INTO employee (ID, NAME) VALUES (?, ?)", options)
-result := query.Execute()
+result, _ := query.Execute()
 ```
 ### CL Commands
 CL commands can be easily run by setting the `IsCLcommand` option to be `true` on the `QueryOptions` object or by directly using the `CLCommand` function on a job.
 ```go
 query, _ := job.ClCommand("CRTLIB LIB(MYLIB1) TEXT('My cool library')")
-result := query.Execute()
+result, _ := query.Execute()
 ```
 ### Pooling
 To streamline the creation and reuse of `SQLJob` objects, your application should establish a connection pool on startup. This is recommended as connection pools significantly improve performance as it reduces the number of connection object that are created.
@@ -92,7 +92,7 @@ To streamline the creation and reuse of `SQLJob` objects, your application shoul
 A pool can be initialized with a given starting size and maximum size. Once initialized, the pool provides APIs to access a free job or to send a query directly to a free job.
 ```go
 // Create a pool with a max size of 5, starting size of 3 and maximum wait time of 1 second
-options := mapepire.PoolOptions{Creds: &creds, MaxSize: 5, StartingSize: 3, MaxWaitTime: 1}
+options := mapepire.PoolOptions{Creds: creds, MaxSize: 5, StartingSize: 3, MaxWaitTime: 1}
 pool, _ := mapepire.NewPool(options)
 
 // Initialize and execute query
