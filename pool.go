@@ -124,6 +124,12 @@ func (jp *JobPool) ExecuteSQLWithOptions(command string, queryops QueryOptions) 
 
 	resp, executeErr := query.Execute()
 
+	var wsErr *WebsocketError
+	if errors.As(executeErr, &wsErr) {
+		job.connection.Close()
+		job.connection = nil
+	}
+
 	err = jp.AddJob(job)
 	err = errors.Join(executeErr, err)
 	if err != nil {

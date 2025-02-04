@@ -34,6 +34,7 @@ type SQLJob struct {
 	Jobname    string          // Name of the Job
 	Status     string          // Status of the Job
 	Options    *TraceOptions   // Trace configuration options
+	daemon     DaemonServer    // Server daemon with connection details
 	query      *Query          // Pointer to the query
 	queryList  *queryList      // List of all open queries
 	connection *websocket.Conn // Websocket connection
@@ -102,6 +103,7 @@ func (s *SQLJob) Connect(server DaemonServer) error {
 	if err != nil {
 		return err
 	}
+	s.daemon = server
 
 	s.Jobname, response.Error = s.getDBJob()
 	if response.Error != nil {
@@ -123,6 +125,7 @@ func (s *SQLJob) send(req serverRequest) (*ServerResponse, error) {
 	}
 
 	s.writeMutex.Lock()
+	defer s.writeMutex.Unlock()
 	if err := s.connection.WriteMessage(1, []byte(req.jsonreq)); err != nil {
 		msg := "WriteMessage(): " + err.Error()
 		return response, &WebsocketError{Method: "send()", Message: msg}
@@ -133,9 +136,8 @@ func (s *SQLJob) send(req serverRequest) (*ServerResponse, error) {
 		msg := "ReadMessage(): " + err.Error()
 		return response, &WebsocketError{Method: "send()", Message: msg}
 	}
-	s.writeMutex.Unlock()
 
-	response.SqlRC, response.SqlState, response.Error = checkJsonErr(resp)
+	response.SqlRC, response.SqlState, response.Error = checkJsonErr(resp, s)
 	if response.Error != nil {
 		return response, response.Error
 	}
@@ -159,7 +161,7 @@ func (s *SQLJob) send(req serverRequest) (*ServerResponse, error) {
 }
 
 // checks JSON for errors
-func checkJsonErr(jsonres []byte) (int, string, error) {
+func checkJsonErr(jsonres []byte, job *SQLJob) (int, string, error) {
 	var checkError struct {
 		Error    string
 		SqlRC    int    `json:"sql_rc"`
@@ -167,12 +169,40 @@ func checkJsonErr(jsonres []byte) (int, string, error) {
 	}
 
 	json.Unmarshal(jsonres, &checkError)
+	if checkError.Error == "Not connected" {
+		isReconnected := job.reconnect()
+		msg := checkError.Error + fmt.Sprintf(" -> reconnected? %v", isReconnected)
+		return checkError.SqlRC, checkError.SqlState, &ServerError{Method: "checkJsonErr()", Message: msg}
+	}
 	if checkError.Error != "" || checkError.SqlState != "" {
 		msg := "json.Unmarshal(): " + checkError.Error
 		return checkError.SqlRC, checkError.SqlState, &ServerError{Method: "checkJsonErr()", Message: msg}
 	}
 
 	return 0, "", nil
+}
+
+func (s *SQLJob) reconnect() bool {
+	var jsonreq string
+	if s.daemon.Technique != "" {
+		jsonreq =
+			fmt.Sprintf(`{"id":"%v","type":"connect","techinque":"%v","props":"%v"}`, s.ID, s.daemon.Technique, s.daemon.Properties)
+	} else {
+		jsonreq =
+			fmt.Sprintf(`{"id":"%v","type":"connect","props":"%v"}`, s.ID, s.daemon.Properties)
+	}
+
+	err := s.connection.WriteMessage(1, []byte(jsonreq))
+	if err != nil {
+		return false
+	}
+
+	_, resp, err := s.connection.ReadMessage()
+	if err != nil {
+		return false
+	}
+	_, _, err = checkJsonErr(resp, s)
+	return err == nil
 }
 
 // Creates a query with the SQL
@@ -279,7 +309,7 @@ func (s *SQLJob) SetTraceConfig(ops TraceOptions) error {
 		msg := "ReadMessage(): " + err.Error()
 		return &WebsocketError{Method: "SetTraceConfig()", Message: msg}
 	}
-	_, _, err = checkJsonErr(resp)
+	_, _, err = checkJsonErr(resp, s)
 	if err != nil {
 		return err
 	}
@@ -324,7 +354,7 @@ func (s *SQLJob) GetTraceData() error {
 	}
 	s.writeMutex.Unlock()
 
-	_, _, err = checkJsonErr(resp)
+	_, _, err = checkJsonErr(resp, s)
 	if err != nil {
 		return err
 	}
@@ -429,6 +459,11 @@ func (s *SQLJob) GetVersion() (string, error) {
 		return "", &WebsocketError{Method: "GetVersion()", Message: msg}
 	}
 	s.writeMutex.Unlock()
+
+	_, _, err = checkJsonErr(resp, s)
+	if err != nil {
+		return "", err
+	}
 
 	var response struct{ Version string }
 	err = json.Unmarshal(resp, &response)
