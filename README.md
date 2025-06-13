@@ -1,4 +1,7 @@
 # Mapepire Golang Client SDK
+**This project has been contributed to [Mapepire-IBMi/mapepire-go](https://github.com/Mapepire-IBMi/mapepire-go)**
+___
+
 `mapepire-go` is a golang client implementation for [Mapepire](https://github.com/Mapepire-IBMi) that provides a simple interface for connecting to an IBM i server and running SQL queries. The client is designed to work with the [Mapepire Server Component](https://github.com/Mapepire-IBMi/mapepire-server).
 
 ## Setup
